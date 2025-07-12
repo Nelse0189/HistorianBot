@@ -1,0 +1,33 @@
+# --- General ---
+.DS_Store
+*.log
+*.log*
+.env
+.env.*
+.env*.local
+pglite-debug.log
+
+# --- Python / venv ---
+/venv/
+__pycache__/
+*.py[cod]
+*$py.class
+dist/
+build/
+*.egg-info/
+
+# --- Node / Vite / React ---
+/node_modules/
+/frontend/node_modules/
+/functions/node_modules/
+/dist/
+/frontend/dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Firebase ---
+.firebase/
+firebase-debug.log
+firebase-debug.*.log 
