@@ -15,5 +15,5 @@ COPY . .
 
 # Command to run your app using a production-ready server (Gunicorn)
 # Cloud Run automatically sets the PORT environment variable, which Gunicorn respects.
-# The default port is 8080.
-CMD ["gunicorn", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "main:app"] 
+# The default port is 8080. We bind explicitly to be safe.
+CMD ["gunicorn", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8080", "main:app"] 
