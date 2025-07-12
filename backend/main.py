@@ -22,6 +22,8 @@ app = FastAPI()
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "https://discordbot-e1d3d.web.app",
+    "https://discordbot-e1d3d.firebaseapp.com",
 ]
 
 app.add_middleware(
