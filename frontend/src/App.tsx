@@ -79,6 +79,8 @@ function getProgressMessage(progress: ProgressState): string {
   return 'Starting analysis...';
 };
 
+const BACKEND_URL = 'https://historian-527084465069.us-east1.run.app';
+
 function App() {
   const [token, setToken] = useState<string>(() => localStorage.getItem('discordToken') || '');
   const [user, setUser] = useState<{ name: string; avatar: string } | null>(null)
@@ -109,7 +111,7 @@ function App() {
       if (token && step === 'channel') {
         setIsLoading(true);
         try {
-          const verifyResponse = await fetch('https://verifytoken-wlb45mix4a-uc.a.run.app', {
+          const verifyResponse = await fetch(`${BACKEND_URL}/api/verify-token`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token }),
@@ -119,7 +121,7 @@ function App() {
           if (verifyData.success) {
             setUser({ name: verifyData.user.username, avatar: `https://cdn.discordapp.com/avatars/${verifyData.user.id}/${verifyData.user.avatar}.png` });
             
-            const channelsResponse = await fetch('https://getdmchannels-wlb45mix4a-uc.a.run.app', {
+            const channelsResponse = await fetch(`${BACKEND_URL}/api/get-dm-channels`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ token }),
@@ -184,7 +186,7 @@ function App() {
     setIsLoading(true)
     setError('')
     try {
-      const response = await fetch('https://verifytoken-wlb45mix4a-uc.a.run.app', {
+      const response = await fetch(`${BACKEND_URL}/api/verify-token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token }),
@@ -192,7 +194,7 @@ function App() {
       const data = await response.json()
       if (data.success) {
         setUser({ name: data.user.username, avatar: `https://cdn.discordapp.com/avatars/${data.user.id}/${data.user.avatar}.png` })
-        const channelsResponse = await fetch('https://getdmchannels-wlb45mix4a-uc.a.run.app', {
+        const channelsResponse = await fetch(`${BACKEND_URL}/api/get-dm-channels`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token }),
@@ -241,7 +243,7 @@ function App() {
 
     eventSourceRef.current?.close()
 
-    const url = new URL('https://streamanalyzechannel-wlb45mix4a-uc.a.run.app');
+    const url = new URL(`${BACKEND_URL}/api/stream-analyze-channel`);
     url.searchParams.append('token', token);
     url.searchParams.append('channel_id', channel.id);
     
@@ -283,7 +285,7 @@ function App() {
     setIsTyping(true)
 
     try {
-      const response = await fetch('https://askquestion-wlb45mix4a-uc.a.run.app', {
+      const response = await fetch(`${BACKEND_URL}/api/ask-question`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -327,7 +329,7 @@ function App() {
     setIsSummarizing24h(true);
     setSummary24h(null);
     try {
-      const response = await fetch('http://localhost:8000/api/summarize-last-24h', {
+      const response = await fetch(`${BACKEND_URL}/api/summarize-last-24h`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
