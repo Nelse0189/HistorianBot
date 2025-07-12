@@ -1,24 +1,19 @@
 {
-  "name": "discord-dm-analyzer-app",
+  "name": "channelbot",
   "version": "1.0.0",
+  "main": "index.js",
   "scripts": {
-    "install:backend": "python3 -m venv venv && ./venv/bin/pip install -r backend/requirements.txt",
-    "install:frontend": "cd frontend && npm install",
-    "install": "npm run install:backend && npm run install:frontend",
-    "start-backend": "cd backend && ../venv/bin/uvicorn main:app --reload --port 8000",
-    "start-frontend": "npm run dev --prefix frontend",
-    "dev": "concurrently \"npm:start-backend\" \"npm:start-frontend\"",
-    "build": "cd frontend && npm run build"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "devDependencies": {
-    "@types/three": "^0.178.0",
-    "concurrently": "^8.2.2",
-    "firebase-tools": "^14.9.0"
-  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
   "dependencies": {
-    "firebase": "^11.10.0",
-    "tailwindcss-animate": "^1.0.7",
-    "three": "^0.178.0",
-    "vanta": "^0.5.24"
+    "@discordjs/rest": "^2.5.1",
+    "@google/generative-ai": "^0.24.1",
+    "discord.js": "^14.21.0",
+    "dotenv": "^17.1.0",
+    "firebase-admin": "^13.4.0"
   }
 }
