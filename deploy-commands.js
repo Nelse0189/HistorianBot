@@ -4,6 +4,9 @@ require('dotenv').config();
 
 const commands = [
 	new SlashCommandBuilder().setName('summary').setDescription('Creates a summary story of the Discord server.'),
+	new SlashCommandBuilder().setName('summary-24h').setDescription('Summarizes the last 24 hours of conversation.'),
+	new SlashCommandBuilder().setName('summary-week').setDescription('Summarizes the last 7 days of conversation.'),
+	new SlashCommandBuilder().setName('server-awards').setDescription('Generates fun awards based on the last month of server activity.'),
 	new SlashCommandBuilder().setName('user').setDescription('Gets a summary of a user, their MBTI, anime and pop culture match.')
 		.addUserOption(option => option.setName('target').setDescription('The user to summarize').setRequired(true)),
 	new SlashCommandBuilder().setName('ask').setDescription('Ask the bot anything about the discord server.')
