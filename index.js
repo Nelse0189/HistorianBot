@@ -24,38 +24,23 @@ client.on('interactionCreate', async interaction => {
 
   const { commandName } = interaction;
 
-  if (commandName === 'summary') {
+  if (commandName === 'summary-24h' || commandName === 'summary-week' || commandName === 'summary-month') {
     await interaction.deferReply();
     try {
-      const channel = interaction.channel;
-      const messages = await channel.messages.fetch({ limit: 100 });
-      const chatHistory = messages.map(m => `${m.author.username}: ${m.content}`).join('\n');
-
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash"});
-      const prompt = `Based on the following chat history of a Discord server, create a summary story of what has been happening in the server.\n\nChat History:\n${chatHistory}\n\nSummary Story:`;
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      
-      if (text.length > 2000) {
-        const chunks = text.match(/[\s\S]{1,2000}/g) || [];
-        await interaction.editReply(chunks[0]);
-        for (let i = 1; i < chunks.length; i++) {
-          await interaction.followUp(chunks[i]);
-        }
-      } else {
-        await interaction.editReply(text);
+      let duration;
+      let durationText;
+      if (commandName === 'summary-24h') {
+        duration = 24 * 60 * 60 * 1000;
+        durationText = 'last 24 hours';
+      } else if (commandName === 'summary-week') {
+        duration = 7 * 24 * 60 * 60 * 1000;
+        durationText = 'last 7 days';
+      } else { // summary-month
+        duration = 30 * 24 * 60 * 60 * 1000;
+        durationText = 'last 30 days';
       }
-    } catch (error) {
-      console.error('Error in summary command:', error);
-      await interaction.editReply('Sorry, I ran into an error while creating the server summary!');
-    }
-  } else if (commandName === 'summary-24h' || commandName === 'summary-week') {
-    await interaction.deferReply();
-    try {
-      const duration = commandName === 'summary-24h' ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+
       const targetTimestamp = Date.now() - duration;
-      const durationText = commandName === 'summary-24h' ? 'last 24 hours' : 'last 7 days';
 
       let allMessages = [];
       let lastId;
