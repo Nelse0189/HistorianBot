@@ -26,142 +26,150 @@ client.on('interactionCreate', async interaction => {
 
   const { commandName } = interaction;
 
-  if (commandName === 'summary-24h' || commandName === 'summary-week') {
+  if (commandName === 'summary-24h' || commandName === 'summary-week' || commandName === 'summary-month') {
     await interaction.deferReply();
-    try {
-        let duration;
-        let durationText;
-        if (commandName === 'summary-24h') {
-            duration = 1 * 24 * 60 * 60 * 1000;
-            durationText = 'past 24 hours';
-        } else { // summary-week
-            duration = 7 * 24 * 60 * 60 * 1000;
-            durationText = 'past week';
-        }
 
-        const sinceTimestamp = Date.now() - duration;
-        const channel = interaction.channel;
-        let allMessages = [];
-        let lastId;
-
-        // Fetch messages from Discord API
-        while (true) {
-            const options = { limit: 100 };
-            if (lastId) {
-                options.before = lastId;
-            }
-            const messages = await channel.messages.fetch(options);
-            const newMessages = messages.filter(m => m.createdTimestamp >= sinceTimestamp);
-            allMessages.push(...newMessages.values());
-            lastId = messages.lastKey();
-            
-            if (messages.size < 100 || (messages.last().createdTimestamp < sinceTimestamp)) {
-                break;
-            }
-        }
-
-        if (allMessages.length === 0) {
-            await interaction.editReply(`I couldn't find any messages in this channel from the ${durationText}.`);
-            return;
-        }
-
-        const chatHistory = allMessages.reverse().map(m => `${m.author.username}: ${m.content}`).join('\n');
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest"});
-        const prompt = `Based on the following chat history from the ${durationText}, create a summary story of what has been happening.\n\nChat History:\n${chatHistory}\n\nSummary Story:`;
-      
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
-        const replyContent = `**Summary for the ${durationText} in #${interaction.channel.name}**\n\n${text}`;
-
-        if (replyContent.length > 2000) {
-            const chunks = replyContent.match(/[\s\S]{1,2000}/g) || [];
-            await interaction.editReply(chunks[0]);
-            for (let i = 1; i < chunks.length; i++) {
-                await interaction.followUp(chunks[i]);
-            }
-        } else {
-            await interaction.editReply(replyContent);
-        }
-    } catch (error) {
-        console.error(`Error in ${commandName} command:`, error);
-        await interaction.editReply('Sorry, I ran into an error while generating the summary!');
+    // Check if the channel has been indexed
+    const indexedChannelRef = db.collection('indexed_channels').doc(interaction.channel.id);
+    const indexedChannelDoc = await indexedChannelRef.get();
+    if (!indexedChannelDoc.exists) {
+        await interaction.editReply({ content: 'This channel has not been indexed yet. An admin must run the `/index-channel` command before summaries can be generated.'});
+        return;
     }
-} else if (commandName === 'summary-month') {
-    await interaction.deferReply({ content: "Summarizing the last month... this might take a moment as I'm also checking for new messages.", ephemeral: true });
-    
+
+    if (commandName === 'summary-month') {
+        await interaction.followUp({ content: "Summarizing the last month... this might take a moment as I'm also checking for new messages."});
+    }
+
     try {
-        const days = 30;
-        const durationText = 'past month';
-        const sinceDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-        const channelId = interaction.channel.id;
-
-        // --- Backfill Logic ---
-        const channel = interaction.channel;
-        let lastId;
-        while(true) {
-            const options = { limit: 100 };
-            if (lastId) options.before = lastId;
-
-            const messages = await channel.messages.fetch(options);
-             if (messages.size === 0) break;
-
-            const batch = db.batch();
-            let messagesInBatch = 0;
-            messages.forEach(message => {
-                if (message.createdTimestamp >= sinceDate.getTime() && !message.author.bot) {
-                    const messageRef = db.collection('messages').doc(message.id);
-                     batch.set(messageRef, {
-                        channelId: message.channel.id,
-                        guildId: message.guild.id,
-                        authorId: message.author.id,
-                        authorUsername: message.author.username,
-                        content: message.content,
-                        timestamp: message.createdAt,
-                    }, { merge: true }); // Use merge to avoid overwriting existing data
-                    messagesInBatch++;
-                }
-            });
-
-            if (messagesInBatch > 0) await batch.commit();
-            lastId = messages.lastKey();
-            if (messages.last().createdTimestamp < sinceDate.getTime()) break;
-        }
-        // --- End Backfill Logic ---
-
-        const messagesSnapshot = await db.collection('messages')
-            .where('channelId', '==', channelId)
-            .where('timestamp', '>=', sinceDate)
-            .orderBy('timestamp', 'asc')
-            .get();
-        
-        if (messagesSnapshot.empty) {
-            await interaction.editReply(`I couldn't find any messages in this channel from the ${durationText}.`);
-            return;
-        }
-
-        const chatHistory = messagesSnapshot.docs.map(doc => {
-            const data = doc.data();
-            return `${data.authorUsername}: ${data.content}`;
-        }).join('\n');
-
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest"});
-        const prompt = `Based on the following chat history from the ${durationText}, create a summary story of what has been happening.\n\nChat History:\n${chatHistory}\n\nSummary Story:`;
-      
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
-
-        const replyContent = `**Summary for the ${durationText} in #${interaction.channel.name}**\n\n${text}`;
-
-        if (replyContent.length > 2000) {
-            const chunks = replyContent.match(/[\s\S]{1,2000}/g) || [];
-            await interaction.editReply(chunks[0]);
-            for (let i = 1; i < chunks.length; i++) {
-                await interaction.followUp(chunks[i]);
+        if (commandName === 'summary-24h' || commandName === 'summary-week') {
+            let duration;
+            let durationText;
+            if (commandName === 'summary-24h') {
+                duration = 1 * 24 * 60 * 60 * 1000;
+                durationText = 'past 24 hours';
+            } else { // summary-week
+                duration = 7 * 24 * 60 * 60 * 1000;
+                durationText = 'past week';
             }
-        } else {
-            await interaction.editReply(replyContent);
+
+            const sinceTimestamp = Date.now() - duration;
+            const channel = interaction.channel;
+            let allMessages = [];
+            let lastId;
+
+            // Fetch messages from Discord API
+            while (true) {
+                const options = { limit: 100 };
+                if (lastId) {
+                    options.before = lastId;
+                }
+                const messages = await channel.messages.fetch(options);
+                const newMessages = messages.filter(m => m.createdTimestamp >= sinceTimestamp);
+                allMessages.push(...newMessages.values());
+                lastId = messages.lastKey();
+                
+                if (messages.size < 100 || (messages.last().createdTimestamp < sinceTimestamp)) {
+                    break;
+                }
+            }
+
+            if (allMessages.length === 0) {
+                await interaction.editReply(`I couldn't find any messages in this channel from the ${durationText}.`);
+                return;
+            }
+
+            const chatHistory = allMessages.reverse().map(m => `${m.author.username}: ${m.content}`).join('\n');
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest"});
+            const prompt = `Based on the following chat history from the ${durationText}, create a summary story of what has been happening.\n\nChat History:\n${chatHistory}\n\nSummary Story:`;
+          
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            const text = response.text();
+            const replyContent = `**Summary for the ${durationText} in #${interaction.channel.name}**\n\n${text}`;
+
+            if (replyContent.length > 2000) {
+                const chunks = replyContent.match(/[\s\S]{1,2000}/g) || [];
+                await interaction.editReply(chunks[0]);
+                for (let i = 1; i < chunks.length; i++) {
+                    await interaction.followUp(chunks[i]);
+                }
+            } else {
+                await interaction.editReply(replyContent);
+            }
+        } else if (commandName === 'summary-month') {
+            const days = 30;
+            const durationText = 'past month';
+            const sinceDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+            const channelId = interaction.channel.id;
+
+            // --- Backfill Logic ---
+            const channel = interaction.channel;
+            let lastId;
+            while(true) {
+                const options = { limit: 100 };
+                if (lastId) options.before = lastId;
+
+                const messages = await channel.messages.fetch(options);
+                 if (messages.size === 0) break;
+
+                const batch = db.batch();
+                let messagesInBatch = 0;
+                messages.forEach(message => {
+                    if (message.createdTimestamp >= sinceDate.getTime() && !message.author.bot) {
+                        const messageRef = db.collection('messages').doc(message.id);
+                         batch.set(messageRef, {
+                            channelId: message.channel.id,
+                            guildId: message.guild.id,
+                            authorId: message.author.id,
+                            authorUsername: message.author.username,
+                            content: message.content,
+                            timestamp: message.createdAt,
+                        }, { merge: true }); // Use merge to avoid overwriting existing data
+                        messagesInBatch++;
+                    }
+                });
+
+                if (messagesInBatch > 0) await batch.commit();
+                lastId = messages.lastKey();
+                if (messages.last().createdTimestamp < sinceDate.getTime()) break;
+            }
+            // --- End Backfill Logic ---
+
+            const messagesSnapshot = await db.collection('messages')
+                .where('channelId', '==', channelId)
+                .where('timestamp', '>=', sinceDate)
+                .orderBy('timestamp', 'asc')
+                .get();
+            
+            if (messagesSnapshot.empty) {
+                await interaction.editReply(`I couldn't find any messages in this channel from the ${durationText}.`);
+                return;
+            }
+
+            const chatHistory = messagesSnapshot.docs.map(doc => {
+                const data = doc.data();
+                return `${data.authorUsername}: ${data.content}`;
+            }).join('\n');
+
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest"});
+            const prompt = `Based on the following chat history from the ${durationText}, create a summary story of what has been happening.\n\nChat History:\n${chatHistory}\n\nSummary Story:`;
+          
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            const text = response.text();
+
+            const replyContent = `**Summary for the ${durationText} in #${interaction.channel.name}**\n\n${text}`;
+
+            if (replyContent.length > 2000) {
+                const chunks = replyContent.match(/[\s\S]{1,2000}/g) || [];
+                await interaction.editReply(chunks[0]);
+                for (let i = 1; i < chunks.length; i++) {
+                    await interaction.followUp(chunks[i]);
+                }
+            } else {
+                await interaction.editReply(replyContent);
+            }
         }
     } catch (error) {
         console.error(`Error in ${commandName} command:`, error);
@@ -264,6 +272,14 @@ client.on('interactionCreate', async interaction => {
 
       // Send a follow-up ephemeral message
       await interaction.followUp({ content: `✅ Historical indexing complete! I have successfully indexed ${messageCount} messages for this channel.`, ephemeral: true });
+
+      // Mark the channel as indexed in Firestore
+      const indexedChannelRef = db.collection('indexed_channels').doc(channel.id);
+      await indexedChannelRef.set({
+          indexedAt: new Date(),
+          guildId: interaction.guild.id,
+          indexedBy: interaction.user.id
+      });
 
     } catch (error) {
       console.error('Error during channel indexing:', error);
