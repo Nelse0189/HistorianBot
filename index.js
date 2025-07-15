@@ -205,7 +205,15 @@ client.on('interactionCreate', async interaction => {
         }).join('\n');
 
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest"});
-        const prompt = `Based on the entire indexed chat history for this channel, create a comprehensive summary of the key topics, running jokes, and general vibe.\n\nChat History:\n${chatHistory}\n\nOverall Summary:`;
+        
+        let prompt;
+        const messageCount = messagesSnapshot.size;
+
+        if (messageCount > 500) { // Use a more detailed prompt for long histories
+            prompt = `The following is a long chat history from this Discord channel, containing ${messageCount} messages. Please provide a comprehensive summary that includes a timeline of major events, key discussions, and the evolution of the channel's culture. Identify significant moments, decisions, or turning points. Structure the output with a main summary first, followed by a 'Key Events Timeline'.\n\nChat History:\n${chatHistory}\n\nComprehensive Summary and Timeline:`;
+        } else {
+            prompt = `Based on the entire indexed chat history for this channel, create a comprehensive summary of the key topics, running jokes, and general vibe.\n\nChat History:\n${chatHistory}\n\nOverall Summary:`;
+        }
       
         const result = await model.generateContent(prompt);
         const response = await result.response;
