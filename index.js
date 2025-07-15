@@ -8,12 +8,14 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// const admin = require('firebase-admin');
-// const serviceAccount = require('./firebase-service-account-key.json');
+const admin = require('firebase-admin');
+const serviceAccount = require('./firebase-service-account-key.json');
 
-// admin.initializeApp({
-//   credential: admin.credential.cert(serviceAccount)
-// });
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
+const db = admin.firestore();
 
 client.on('ready', () => {
   console.log(`Logged in as ${client.user.tag}!`);
@@ -141,6 +143,56 @@ client.on('interactionCreate', async interaction => {
       console.error(`Error in ${commandName} command:`, error);
       await interaction.editReply('Sorry, the awards committee is on a coffee break! An error occurred.');
     }
+  } else if (commandName === 'index-channel') {
+    // Acknowledge the command ephemerally
+    await interaction.reply({ content: '✅ Understood. Beginning to index the history of this channel. This might take a while. I will notify you when it is complete.', ephemeral: true });
+    
+    try {
+      let messageCount = 0;
+      let lastId;
+      const channel = interaction.channel;
+
+      // Loop as long as there are messages to fetch
+      while (true) {
+        const options = { limit: 100 };
+        if (lastId) {
+          options.before = lastId;
+        }
+
+        const messages = await channel.messages.fetch(options);
+        if (messages.size === 0) {
+          break; // No more messages
+        }
+        
+        // Use a batched write for efficiency
+        const batch = db.batch();
+        messages.forEach(message => {
+          if (!message.author.bot) { // Ignore bots
+            const messageRef = db.collection('messages').doc(message.id);
+            batch.set(messageRef, {
+              channelId: message.channel.id,
+              guildId: message.guild.id,
+              authorId: message.author.id,
+              authorUsername: message.author.username,
+              content: message.content,
+              timestamp: message.createdAt,
+            });
+            messageCount++;
+          }
+        });
+        
+        await batch.commit();
+
+        lastId = messages.lastKey();
+      }
+
+      // Send a follow-up ephemeral message
+      await interaction.followUp({ content: `✅ Historical indexing complete! I have successfully indexed ${messageCount} messages for this channel.`, ephemeral: true });
+
+    } catch (error) {
+      console.error('Error during channel indexing:', error);
+      await interaction.followUp({ content: '❌ An error occurred during the indexing process. Please check the logs.', ephemeral: true });
+    }
   } else if (commandName === 'user') {
     await interaction.deferReply();
     try {
@@ -197,6 +249,47 @@ client.on('interactionCreate', async interaction => {
       console.error('Error in ask command:', error);
       await interaction.editReply('Sorry, I ran into an error while answering your question!');
     }
+  }
+});
+
+client.on('messageCreate', async message => {
+  if (message.author.bot) return; // Ignore bots
+
+  try {
+    const messageRef = db.collection('messages').doc(message.id);
+    await messageRef.set({
+      channelId: message.channel.id,
+      guildId: message.guild.id,
+      authorId: message.author.id,
+      authorUsername: message.author.username,
+      content: message.content,
+      timestamp: message.createdAt,
+    });
+  } catch (error) {
+    console.error('Error saving message to Firestore:', error);
+  }
+});
+
+client.on('messageUpdate', async (oldMessage, newMessage) => {
+  if (newMessage.author.bot) return;
+
+  try {
+    const messageRef = db.collection('messages').doc(newMessage.id);
+    await messageRef.update({
+      content: newMessage.content,
+      editedAt: new Date(),
+    });
+  } catch (error) {
+    console.error('Error updating message in Firestore:', error);
+  }
+});
+
+client.on('messageDelete', async message => {
+  try {
+    const messageRef = db.collection('messages').doc(message.id);
+    await messageRef.delete();
+  } catch (error) {
+    console.error('Error deleting message from Firestore:', error);
   }
 });
 

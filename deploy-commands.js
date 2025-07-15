@@ -7,6 +7,8 @@ const commands = [
 	new SlashCommandBuilder().setName('summary-week').setDescription('Summarizes the last 7 days of conversation.'),
 	new SlashCommandBuilder().setName('summary-month').setDescription('Summarizes the last 30 days of conversation.'),
 	new SlashCommandBuilder().setName('server-awards').setDescription('Generates fun awards based on the last month of server activity.'),
+	new SlashCommandBuilder().setName('index-channel').setDescription('[Admin] Begins indexing the history of this channel.')
+		.setDefaultMemberPermissions(0), // Restrict to admins by default
 	new SlashCommandBuilder().setName('user').setDescription('Gets a summary of a user, their MBTI, anime and pop culture match.')
 		.addUserOption(option => option.setName('target').setDescription('The user to summarize').setRequired(true)),
 	new SlashCommandBuilder().setName('ask').setDescription('Ask the bot anything about the discord server.')
