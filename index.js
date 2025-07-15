@@ -28,68 +28,61 @@ client.on('interactionCreate', async interaction => {
 
   if (commandName === 'summary-24h' || commandName === 'summary-week' || commandName === 'summary-month') {
     await interaction.deferReply();
+    
     try {
-      let duration;
-      let durationText;
-      if (commandName === 'summary-24h') {
-        duration = 24 * 60 * 60 * 1000;
-        durationText = 'last 24 hours';
-      } else if (commandName === 'summary-week') {
-        duration = 7 * 24 * 60 * 60 * 1000;
-        durationText = 'last 7 days';
-      } else { // summary-month
-        duration = 30 * 24 * 60 * 60 * 1000;
-        durationText = 'last 30 days';
-      }
-
-      const targetTimestamp = Date.now() - duration;
-
-      let allMessages = [];
-      let lastId;
-      const maxFetches = 40; // Fetch up to 4000 messages
-
-      for (let i = 0; i < maxFetches; i++) {
-        const options = { limit: 100 };
-        if (lastId) {
-          options.before = lastId;
+        let days;
+        let durationText;
+        if (commandName === 'summary-24h') {
+            days = 1;
+            durationText = 'past 24 hours';
+        } else if (commandName === 'summary-week') {
+            days = 7;
+            durationText = 'past week';
+        } else { // summary-month
+            days = 30;
+            durationText = 'past month';
         }
-        const messages = await interaction.channel.messages.fetch(options);
-        if (messages.size === 0) {
-          break;
-        }
-        const newMessages = messages.filter(m => m.createdTimestamp >= targetTimestamp);
-        allMessages.push(...newMessages.values());
-        lastId = messages.lastKey();
-        if (messages.last().createdTimestamp < targetTimestamp) {
-          break;
-        }
-      }
 
-      if (allMessages.length === 0) {
-        await interaction.editReply(`No messages found in the ${durationText}.`);
-        return;
-      }
+        const sinceDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        const channelId = interaction.channel.id;
+
+        const messagesSnapshot = await db.collection('messages')
+            .where('channelId', '==', channelId)
+            .where('timestamp', '>=', sinceDate)
+            .orderBy('timestamp', 'asc')
+            .get();
+        
+        if (messagesSnapshot.empty) {
+            await interaction.editReply(`I couldn't find any messages in this channel from the ${durationText}.`);
+            return;
+        }
+
+        const chatHistory = messagesSnapshot.docs.map(doc => {
+            const data = doc.data();
+            return `${data.authorUsername}: ${data.content}`;
+        }).join('\n');
+
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest"});
+        const prompt = `Based on the following chat history from the ${durationText}, create a summary story of what has been happening.\n\nChat History:\n${chatHistory}\n\nSummary Story:`;
       
-      const chatHistory = allMessages.reverse().map(m => `${m.author.username}: ${m.content}`).join('\n');
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const prompt = `Based on the following chat history from the ${durationText}, create a summary story of what has been happening.\n\nChat History:\n${chatHistory}\n\nSummary Story:`;
-      
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      
-      if (text.length > 2000) {
-        const chunks = text.match(/[\s\S]{1,2000}/g) || [];
-        await interaction.editReply(chunks[0]);
-        for (let i = 1; i < chunks.length; i++) {
-          await interaction.followUp(chunks[i]);
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
+
+        const replyContent = `**Summary for the ${durationText} in #${interaction.channel.name}**\n\n${text}`;
+
+        if (replyContent.length > 2000) {
+            const chunks = replyContent.match(/[\s\S]{1,2000}/g) || [];
+            await interaction.editReply(chunks[0]);
+            for (let i = 1; i < chunks.length; i++) {
+                await interaction.followUp(chunks[i]);
+            }
+        } else {
+            await interaction.editReply(replyContent);
         }
-      } else {
-        await interaction.editReply(text);
-      }
     } catch (error) {
-      console.error(`Error in ${commandName} command:`, error);
-      await interaction.editReply('Sorry, I ran into an error while creating the summary!');
+        console.error(`Error in ${commandName} command:`, error);
+        await interaction.editReply('Sorry, I ran into an error while generating the summary!');
     }
   } else if (commandName === 'server-awards') {
     await interaction.deferReply();
@@ -122,7 +115,7 @@ client.on('interactionCreate', async interaction => {
       }
 
       const chatHistory = allMessages.reverse().map(m => `${m.author.username}: ${m.content}`).join('\n');
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
       const prompt = `You are a fun awards committee. Based on the entire chat log from the past month, announce winners for the following categories. Be creative and provide a brief, funny justification for each based on their messages:\n- 'The Night Owl Award' (most active late at night)\n- 'The Comedian Award' (most frequent use of jokes or funny messages)\n- 'The Main Character Award' (most mentioned user)\n- 'The Most Quotable Award'\n\nChat History:\n${chatHistory}\n\nAnd the winners are...`;
 
       const result = await model.generateContent(prompt);
@@ -196,30 +189,43 @@ client.on('interactionCreate', async interaction => {
   } else if (commandName === 'user') {
     await interaction.deferReply();
     try {
-      const user = interaction.options.getUser('target');
-      const channel = interaction.channel;
-      const messages = await channel.messages.fetch({ limit: 100 });
-      const userMessages = messages.filter(m => m.author.id === user.id);
-      const chatHistory = userMessages.map(m => m.content).join('\n');
+        const user = interaction.options.getUser('target');
+        const guildId = interaction.guild.id;
 
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash"});
-      const prompt = `Based on the following chat history of a user, create a summary of their personality, determine their MBTI type, and suggest an anime and pop culture character that matches them.\n\nChat History:\n${chatHistory}\n\nSummary:\nMBTI:\nAnime Match:\nPop Culture Match:`;
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      
-      if (text.length > 2000) {
-        const chunks = text.match(/[\s\S]{1,2000}/g) || [];
-        await interaction.editReply(chunks[0]);
-        for (let i = 1; i < chunks.length; i++) {
-          await interaction.followUp(chunks[i]);
+        // Query firestore for messages from this user in this guild
+        const messagesSnapshot = await db.collection('messages')
+            .where('guildId', '==', guildId)
+            .where('authorId', '==', user.id)
+            .orderBy('timestamp', 'desc')
+            .limit(200) // Get the most recent 200 messages
+            .get();
+
+        if (messagesSnapshot.empty) {
+            await interaction.editReply("I couldn't find any messages from this user in the index. Have they talked recently?");
+            return;
         }
-      } else {
-        await interaction.editReply(text);
-      }
+
+        const userMessages = messagesSnapshot.docs.map(doc => doc.data().content);
+        const chatHistory = userMessages.reverse().join('\n'); // reverse to get chronological order
+
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest"});
+        const prompt = `Based on the following chat history of a user, create a summary of their personality, determine their MBTI type, and suggest an anime and pop culture character that matches them.\n\nChat History:\n${chatHistory}\n\nSummary:\nMBTI:\nAnime Match:\nPop Culture Match:`;
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
+      
+        if (text.length > 2000) {
+            const chunks = text.match(/[\s\S]{1,2000}/g) || [];
+            await interaction.editReply(chunks[0]);
+            for (let i = 1; i < chunks.length; i++) {
+                await interaction.followUp(chunks[i]);
+            }
+        } else {
+            await interaction.editReply(text);
+        }
     } catch (error) {
-      console.error('Error in user command:', error);
-      await interaction.editReply('Sorry, I ran into an error while creating the user summary!');
+        console.error('Error in user command:', error);
+        await interaction.editReply('Sorry, I ran into an error while creating the user summary!');
     }
   } else if (commandName === 'ask') {
     await interaction.deferReply();
@@ -229,7 +235,7 @@ client.on('interactionCreate', async interaction => {
       const messages = await channel.messages.fetch({ limit: 100 });
       const chatHistory = messages.map(m => `${m.author.username}: ${m.content}`).join('\n');
 
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash"});
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest"});
       const prompt = `Based on the following chat history, answer the user's question.\n\nChat History:\n${chatHistory}\n\nQuestion: ${question}\n\nAnswer:`;
       const result = await model.generateContent(prompt);
       const response = await result.response;
