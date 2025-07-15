@@ -175,6 +175,57 @@ client.on('interactionCreate', async interaction => {
         console.error(`Error in ${commandName} command:`, error);
         await interaction.editReply('Sorry, I ran into an error while generating the summary!');
     }
+} else if (commandName === 'summary') {
+    await interaction.deferReply();
+
+    // Check if the channel has been indexed
+    const indexedChannelRef = db.collection('indexed_channels').doc(interaction.channel.id);
+    const indexedChannelDoc = await indexedChannelRef.get();
+    if (!indexedChannelDoc.exists) {
+        await interaction.editReply({ content: 'This channel has not been indexed yet. An admin must run the `/index-channel` command before summaries can be generated.'});
+        return;
+    }
+
+    try {
+        const channelId = interaction.channel.id;
+
+        const messagesSnapshot = await db.collection('messages')
+            .where('channelId', '==', channelId)
+            .orderBy('timestamp', 'asc')
+            .get();
+        
+        if (messagesSnapshot.empty) {
+            await interaction.editReply(`I couldn't find any indexed messages for this channel.`);
+            return;
+        }
+
+        const chatHistory = messagesSnapshot.docs.map(doc => {
+            const data = doc.data();
+            return `${data.authorUsername}: ${data.content}`;
+        }).join('\n');
+
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest"});
+        const prompt = `Based on the entire indexed chat history for this channel, create a comprehensive summary of the key topics, running jokes, and general vibe.\n\nChat History:\n${chatHistory}\n\nOverall Summary:`;
+      
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
+
+        const replyContent = `**Overall Summary for #${interaction.channel.name}**\n\n${text}`;
+
+        if (replyContent.length > 2000) {
+            const chunks = replyContent.match(/[\s\S]{1,2000}/g) || [];
+            await interaction.editReply(chunks[0]);
+            for (let i = 1; i < chunks.length; i++) {
+                await interaction.followUp(chunks[i]);
+            }
+        } else {
+            await interaction.editReply(replyContent);
+        }
+    } catch (error) {
+        console.error(`Error in summary command:`, error);
+        await interaction.editReply('Sorry, I ran into an error while generating the summary!');
+    }
   } else if (commandName === 'server-awards') {
     await interaction.deferReply();
     try {

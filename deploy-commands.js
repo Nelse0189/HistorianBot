@@ -3,6 +3,7 @@ const { REST } = require('@discordjs/rest');
 require('dotenv').config();
 
 const commands = [
+	new SlashCommandBuilder().setName('summary').setDescription('Generates a summary of the entire channel history from the index.'),
 	new SlashCommandBuilder().setName('summary-24h').setDescription('Summarizes the last 24 hours of conversation.'),
 	new SlashCommandBuilder().setName('summary-week').setDescription('Summarizes the last 7 days of conversation.'),
 	new SlashCommandBuilder().setName('summary-month').setDescription('Summarizes the last 30 days of conversation.'),
